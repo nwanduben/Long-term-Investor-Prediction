@@ -1,4 +1,3 @@
-# src/models/train.py
 import argparse
 import pandas as pd
 import mlflow
@@ -11,92 +10,73 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import accuracy_score
 import joblib
 from src.data.preprocess import preprocess_data
+import os
+
+# ✅ Define the processed file path
+PROCESSED_DATA_PATH = "data/processed/bank_marketing_cleaned.csv"
 
 def train_models(max_iter, n_estimators, max_depth, dt_max_depth):
-    # Load and preprocess data
-    df = pd.read_csv("data/processed/bank_marketing_data_cleaned.csv")
-    df = preprocess_data(df)
+    # ✅ Preprocess data before training
+    print("🔄 Running data preprocessing...")
+    preprocess_data()  # No arguments needed
 
-    # Define features and target variable
+    # ✅ Check if processed data exists
+    if not os.path.exists(PROCESSED_DATA_PATH):
+        raise FileNotFoundError(f"❌ Processed data not found at {PROCESSED_DATA_PATH}. Check preprocessing.")
+
+    # ✅ Load preprocessed dataset
+    print(f"📥 Loading preprocessed data from {PROCESSED_DATA_PATH}...")
+    df = pd.read_csv(PROCESSED_DATA_PATH)
+
+    # ✅ Define features and target variable
     features = ['balance', 'duration', 'pdays', 'previous']
     target = 'deposit'
     X = df[features]
     y = df[target]
 
-    # Split data: 60% train, 20% validation, 20% test
+    # ✅ Split data: 60% train, 20% validation, 20% test
     X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.25, random_state=42)  # 0.25*0.8 = 0.2
+    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.25, random_state=42)
 
-    # Set up MLflow experiment
+    # ✅ Set up MLflow experiment
     mlflow.set_experiment("Investor_Prediction_Experiment")
     with mlflow.start_run():
-        # Log hyperparameters common to models
+        # Log hyperparameters
         mlflow.log_param("max_iter", max_iter)
         mlflow.log_param("n_estimators", n_estimators)
         mlflow.log_param("rf_max_depth", max_depth)
         mlflow.log_param("dt_max_depth", dt_max_depth)
 
-        # Prepare input example and signatures for reproducibility
+        # Prepare input example for MLflow
         input_example = X_train.iloc[:1].to_dict(orient="records")
         
-        # ----- Logistic Regression -----
+        # 🔹 Logistic Regression
         log_model = LogisticRegression(max_iter=max_iter)
         log_model.fit(X_train, y_train)
-        y_pred_log_val = log_model.predict(X_val)
-        log_val_acc = accuracy_score(y_val, y_pred_log_val)
+        log_val_acc = accuracy_score(y_val, log_model.predict(X_val))
         mlflow.log_metric("logistic_regression_val_accuracy", log_val_acc)
-        signature_log = infer_signature(X_train, log_model.predict(X_train))
-        mlflow.sklearn.log_model(
-            log_model, "logistic_regression",
-            input_example=input_example, signature=signature_log
-        )
-        
-        # ----- Random Forest -----
+        mlflow.sklearn.log_model(log_model, "logistic_regression", input_example=input_example, signature=infer_signature(X_train, log_model.predict(X_train)))
+
+        # 🔹 Random Forest
         rf_model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
         rf_model.fit(X_train, y_train)
-        y_pred_rf_val = rf_model.predict(X_val)
-        rf_val_acc = accuracy_score(y_val, y_pred_rf_val)
+        rf_val_acc = accuracy_score(y_val, rf_model.predict(X_val))
         mlflow.log_metric("random_forest_val_accuracy", rf_val_acc)
-        signature_rf = infer_signature(X_train, rf_model.predict(X_train))
-        mlflow.sklearn.log_model(
-            rf_model, "random_forest",
-            input_example=input_example, signature=signature_rf
-        )
-        
-        # ----- Decision Tree -----
+        mlflow.sklearn.log_model(rf_model, "random_forest", input_example=input_example, signature=infer_signature(X_train, rf_model.predict(X_train)))
+
+        # 🔹 Decision Tree
         dt_model = DecisionTreeClassifier(max_depth=dt_max_depth, random_state=42)
         dt_model.fit(X_train, y_train)
-        y_pred_dt_val = dt_model.predict(X_val)
-        dt_val_acc = accuracy_score(y_val, y_pred_dt_val)
+        dt_val_acc = accuracy_score(y_val, dt_model.predict(X_val))
         mlflow.log_metric("decision_tree_val_accuracy", dt_val_acc)
-        signature_dt = infer_signature(X_train, dt_model.predict(X_train))
-        mlflow.sklearn.log_model(
-            dt_model, "decision_tree",
-            input_example=input_example, signature=signature_dt
-        )
+        mlflow.sklearn.log_model(dt_model, "decision_tree", input_example=input_example, signature=infer_signature(X_train, dt_model.predict(X_train)))
 
-        print(f"Logistic Regression Validation Accuracy: {log_val_acc:.4f}")
-        print(f"Random Forest Validation Accuracy: {rf_val_acc:.4f}")
-        print(f"Decision Tree Validation Accuracy: {dt_val_acc:.4f}")
+        # ✅ Print accuracy scores
+        print(f"📊 Logistic Regression Validation Accuracy: {log_val_acc:.4f}")
+        print(f"🌲 Random Forest Validation Accuracy: {rf_val_acc:.4f}")
+        print(f"🧩 Decision Tree Validation Accuracy: {dt_val_acc:.4f}")
 
-        # Optionally, evaluate on test set and log metrics
-        y_pred_log_test = log_model.predict(X_test)
-        log_test_acc = accuracy_score(y_test, y_pred_log_test)
-        mlflow.log_metric("logistic_regression_test_accuracy", log_test_acc)
-        
-        y_pred_rf_test = rf_model.predict(X_test)
-        rf_test_acc = accuracy_score(y_test, y_pred_rf_test)
-        mlflow.log_metric("random_forest_test_accuracy", rf_test_acc)
-        
-        y_pred_dt_test = dt_model.predict(X_test)
-        dt_test_acc = accuracy_score(y_test, y_pred_dt_test)
-        mlflow.log_metric("decision_tree_test_accuracy", dt_test_acc)
-        
-        print(f"Logistic Regression Test Accuracy: {log_test_acc:.4f}")
-        print(f"Random Forest Test Accuracy: {rf_test_acc:.4f}")
-        print(f"Decision Tree Test Accuracy: {dt_test_acc:.4f}")
-
-        # Save models locally
+        # ✅ Save models locally
         joblib.dump(log_model, "models/logistic_regression.pkl")
         joblib.dump(rf_model, "models/random_forest.pkl")
         joblib.dump(dt_model, "models/decision_tree.pkl")

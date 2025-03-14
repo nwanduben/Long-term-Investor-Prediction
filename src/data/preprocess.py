@@ -1,41 +1,42 @@
-# src/data/preprocess.py
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
+import os
 
-def preprocess_data(df):
-    """
-    Preprocesses the given DataFrame:
-    - Handles missing values.
-    - Encodes categorical variables.
-    - Standardizes numerical features.
+# ✅ Define file paths
+RAW_DATA_PATH = "data/raw/bank_marketing_data.csv"
+PROCESSED_DATA_PATH = "data/processed/bank_marketing_cleaned.csv"
 
-    Args:
-        df (pd.DataFrame): Raw dataset.
+def preprocess_data():
+    """Loads raw data, preprocesses it, and saves the cleaned version."""
+    if not os.path.exists(RAW_DATA_PATH):
+        raise FileNotFoundError(f"❌ Error: {RAW_DATA_PATH} not found!")
 
-    Returns:
-        pd.DataFrame: Processed dataset.
-    """
+    print(f"📥 Loading raw data from: {RAW_DATA_PATH}...")
+    df = pd.read_csv(RAW_DATA_PATH)
 
+    # ✅ Drop 'log_balance' column if present
+    df = df.drop(columns=['log_balance'], errors='ignore')
 
-    # Convert categorical variables to numerical
-    label_encoders = {}
-    categorical_cols = ['job', 'marital', 'education', 'default', 'housing', 'loan', 'contact', 'month', 'poutcome', 'deposit']
-    
-    for col in categorical_cols:
-        le = LabelEncoder()
-        df[col] = le.fit_transform(df[col])
-        label_encoders[col] = le
+    # ✅ Handle missing values
+    df.fillna(df.mode().iloc[0], inplace=True)
 
-    # Standardize numerical columns
-    numerical_cols = ['balance', 'duration', 'pdays', 'previous']
+    # ✅ Convert binary categorical columns to 1s and 0s
+    binary_columns = ['default', 'housing', 'loan', 'deposit']
+    df[binary_columns] = df[binary_columns].apply(lambda x: x.map({'yes': 1, 'no': 0}))
+
+    # ✅ One-hot encode categorical variables
+    df = pd.get_dummies(df, columns=['job', 'marital', 'education'], drop_first=True)
+
+    # ✅ Normalize numerical columns
+    numeric_cols = ['age', 'balance', 'duration', 'campaign', 'pdays', 'previous']
     scaler = StandardScaler()
-    df[numerical_cols] = scaler.fit_transform(df[numerical_cols])
+    df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
 
-    return df
+    # ✅ Save processed data
+    os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True)
+    df.to_csv(PROCESSED_DATA_PATH, index=False)
+    
+    print(f"✅ Preprocessing complete. Data saved to {PROCESSED_DATA_PATH}")
 
-# Test the function
 if __name__ == "__main__":
-    df = pd.read_csv("data/raw/bank_marketing_data.csv")
-    processed_df = preprocess_data(df)
-    processed_df.to_csv("data/processed/bank_marketing_data_cleaned.csv", index=False)
-    print("Preprocessing complete. Cleaned data saved!")
+    preprocess_data()
