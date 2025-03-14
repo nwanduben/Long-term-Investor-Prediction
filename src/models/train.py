@@ -29,7 +29,7 @@ def train_models(max_iter, n_estimators, max_depth, dt_max_depth):
     df = pd.read_csv(PROCESSED_DATA_PATH)
 
     # ✅ Define features and target variable
-    features = ['balance', 'duration', 'pdays', 'previous']
+    features = ['balance', 'duration', 'pdays', 'previous','age','campaign', 'default', 'housing', 'loan']
     target = 'deposit'
     X = df[features]
     y = df[target]

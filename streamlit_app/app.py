@@ -13,7 +13,11 @@ log_model = joblib.load("models/logistic_regression.pkl")
 rf_model = joblib.load("models/random_forest.pkl")
 dt_model = joblib.load("models/decision_tree.pkl")
 
-# Define input fields for user
+# Load feature names used during training
+training_data = pd.read_csv("data/processed/bank_marketing_cleaned.csv")
+feature_columns = training_data.drop(columns=["deposit"]).columns  # Exclude target column
+
+# Streamlit App Title
 st.title("💰 Loan Approval Prediction App")
 st.markdown("This app predicts **loan approvals** based on user-provided financial details.")
 
@@ -35,9 +39,12 @@ default = 1 if default == "yes" else 0
 housing = 1 if housing == "yes" else 0
 loan = 1 if loan == "yes" else 0
 
-# Create a DataFrame from inputs
+# Create DataFrame from user inputs
 user_input = pd.DataFrame([[age, balance, duration, campaign, pdays, previous, default, housing, loan]],
                           columns=['age', 'balance', 'duration', 'campaign', 'pdays', 'previous', 'default', 'housing', 'loan'])
+
+# Align features with the trained model
+user_input = user_input.reindex(columns=feature_columns, fill_value=0)
 
 # Model Selection
 model_choice = st.selectbox("Choose Model for Prediction", ["Logistic Regression", "Random Forest", "Decision Tree"])
@@ -70,8 +77,8 @@ if st.button("Predict Loan Approval"):
 
     # Explainability using LIME
     st.subheader("🔍 LIME Explanation")
-    explainer = lime.lime_tabular.LimeTabularExplainer(np.array(user_input),
-                                                       feature_names=user_input.columns,
+    explainer = lime.lime_tabular.LimeTabularExplainer(np.array(training_data.drop(columns=["deposit"])),
+                                                       feature_names=feature_columns.tolist(),
                                                        class_names=["Not Approved", "Approved"],
                                                        mode="classification")
     exp = explainer.explain_instance(np.array(user_input.iloc[0]), model.predict_proba)

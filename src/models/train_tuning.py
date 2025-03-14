@@ -16,7 +16,7 @@ PROCESSED_DATA_PATH = "data/processed/bank_marketing_cleaned.csv"
 def tune_and_train_model():
     # ✅ Ensure data preprocessing runs before training
     print("🔄 Running data preprocessing...")
-    preprocess_data()  # Ensure preprocess runs before loading
+    preprocess_data()  # Ensure preprocessing runs before loading data
 
     # ✅ Check if processed data exists
     if not os.path.exists(PROCESSED_DATA_PATH):
@@ -36,18 +36,18 @@ def tune_and_train_model():
         print(f"⚠️ Categorical columns found: {categorical_columns} → Encoding...")
         df = pd.get_dummies(df, columns=categorical_columns, drop_first=True)
 
+    # ✅ Define features (Updated to include missing ones)
+    features = ['balance', 'duration', 'pdays', 'previous', 'age', 'campaign', 'default', 'housing', 'loan']
+    target = 'deposit'
+    X = df[features]
+    y = df[target]
+
     # ✅ Check for missing values in deposit
     print(f"🔍 Checking for NaNs in 'deposit' before splitting: {df['deposit'].isnull().sum()} missing values")
     
     if df['deposit'].isnull().sum() > 0:
         df = df.dropna(subset=['deposit'])
     
-    # ✅ Define features and target
-    features = [col for col in df.columns if col != 'deposit']
-    target = 'deposit'
-    X = df[features]
-    y = df[target]
-
     # ✅ Split data: 80% train, 20% test
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
