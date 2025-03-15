@@ -24,11 +24,16 @@ def preprocess_data():
     binary_columns = ['default', 'housing', 'loan', 'deposit']
     df[binary_columns] = df[binary_columns].apply(lambda x: x.map({'yes': 1, 'no': 0}))
 
-    # ✅ One-hot encode categorical variables
-    df = pd.get_dummies(df, columns=['job', 'marital', 'education'], drop_first=True)
+    # ✅ Convert 'month' to numerical values
+    month_mapping = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6, 
+                     'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12}
+    df['month'] = df['month'].map(month_mapping)
+
+    # ✅ One-hot encode categorical variables (Include `contact`, `poutcome`)
+    df = pd.get_dummies(df, columns=['job', 'marital', 'education', 'contact', 'poutcome'], drop_first=True)
 
     # ✅ Normalize numerical columns
-    numeric_cols = ['age', 'balance', 'duration', 'campaign', 'pdays', 'previous']
+    numeric_cols = ['age', 'balance', 'duration', 'campaign', 'pdays', 'previous', 'day']
     scaler = StandardScaler()
     df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
 

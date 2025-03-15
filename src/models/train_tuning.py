@@ -12,6 +12,7 @@ import os
 
 # ✅ Define processed data path
 PROCESSED_DATA_PATH = "data/processed/bank_marketing_cleaned.csv"
+MODEL_PATH = "models/best_random_forest_model.pkl"
 
 def tune_and_train_model():
     # ✅ Ensure data preprocessing runs before training
@@ -30,21 +31,24 @@ def tune_and_train_model():
     if df['deposit'].dtype == 'object':
         df['deposit'] = df['deposit'].map({'yes': 1, 'no': 0})
 
+    # ✅ Drop unnecessary columns to match training features
+    df = df.drop(columns=["day", "month"], errors="ignore")
+
     # ✅ Ensure categorical variables are properly encoded
     categorical_columns = df.select_dtypes(include=['object']).columns.tolist()
     if categorical_columns:
         print(f"⚠️ Categorical columns found: {categorical_columns} → Encoding...")
         df = pd.get_dummies(df, columns=categorical_columns, drop_first=True)
 
-    # ✅ Define features (Updated to include missing ones)
-    features = ['balance', 'duration', 'pdays', 'previous', 'age', 'campaign', 'default', 'housing', 'loan']
-    target = 'deposit'
+    # ✅ Automatically detect all feature columns (EXCLUDING TARGET)
+    features = [col for col in df.columns if col != "deposit"]
+    target = "deposit"
+
     X = df[features]
     y = df[target]
 
-    # ✅ Check for missing values in deposit
+    # ✅ Ensure there are no missing values
     print(f"🔍 Checking for NaNs in 'deposit' before splitting: {df['deposit'].isnull().sum()} missing values")
-    
     if df['deposit'].isnull().sum() > 0:
         df = df.dropna(subset=['deposit'])
     
@@ -86,8 +90,8 @@ def tune_and_train_model():
     
     # ✅ Save the best model
     os.makedirs("models", exist_ok=True)
-    joblib.dump(best_model, "models/best_random_forest_model.pkl")
-    print("🚀 Best model saved to models/best_random_forest_model.pkl")
+    joblib.dump(best_model, MODEL_PATH)
+    print(f"🚀 Best model saved to {MODEL_PATH}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Hyperparameter tuning for Investor Prediction")

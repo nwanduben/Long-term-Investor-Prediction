@@ -28,8 +28,15 @@ def train_models(max_iter, n_estimators, max_depth, dt_max_depth):
     print(f"📥 Loading preprocessed data from {PROCESSED_DATA_PATH}...")
     df = pd.read_csv(PROCESSED_DATA_PATH)
 
-    # ✅ Define features and target variable
-    features = ['balance', 'duration', 'pdays', 'previous','age','campaign', 'default', 'housing', 'loan']
+    # ✅ Define initial feature list (excluding categorical variables that are one-hot encoded)
+    features = ['age', 'balance', 'duration', 'campaign', 'pdays', 'previous', 
+                'default', 'housing', 'loan']  # Binary categorical variables
+
+    # ✅ Automatically add one-hot encoded categorical columns
+    for col in ['job', 'marital', 'education', 'contact', 'poutcome']:
+        one_hot_cols = [c for c in df.columns if col in c]  # Get all one-hot encoded columns
+        features.extend(one_hot_cols)  # ✅ Ensure all one-hot encoded columns are included
+
     target = 'deposit'
     X = df[features]
     y = df[target]
