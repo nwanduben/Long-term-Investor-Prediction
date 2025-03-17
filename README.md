@@ -11,6 +11,10 @@ This Streamlit-based web application predicts whether an investor is a **Long-Te
 - Offers **LIME Explanations** for model predictions
 - Tracks experiments using **MLflow**
 
+## 🚀 Live App
+
+You can access the deployed app here:  
+👉 **[Long-Term Investor Prediction App](https://longterminvestorapp-emtegqg5hme2k8e3sth33t.streamlit.app/)**
 ## 🏁 Installation & Setup
 
 ### 1️⃣ Clone the Repository
