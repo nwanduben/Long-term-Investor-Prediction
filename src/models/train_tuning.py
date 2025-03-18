@@ -2,6 +2,7 @@ import argparse
 import pandas as pd
 import mlflow
 import mlflow.sklearn
+import json
 from mlflow.models.signature import infer_signature
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
@@ -76,8 +77,15 @@ def tune_and_train_model():
     # ✅ Evaluate the best model
     y_pred = best_model.predict(X_test)
     test_accuracy = accuracy_score(y_test, y_pred)
+    class_report = classification_report(y_test, y_pred, output_dict=True)
+
     print("✅ Test Accuracy:", test_accuracy)
     print("✅ Classification Report:\n", classification_report(y_test, y_pred))
+
+    # ✅ Save classification report as JSON
+    report_path = "classification_report.json"
+    with open(report_path, "w") as f:
+        json.dump(class_report, f)
 
     # ✅ Log experiment
     mlflow.set_experiment("Investor_Prediction_Experiment_Tuning")
@@ -85,10 +93,26 @@ def tune_and_train_model():
          mlflow.log_params(best_params)
          mlflow.log_metric("best_cv_accuracy", best_cv_score)
          mlflow.log_metric("test_accuracy", test_accuracy)
+
+         # ✅ Log key classification metrics in MLflow UI
+         mlflow.log_metric("precision_0", class_report["0"]["precision"])
+         mlflow.log_metric("recall_0", class_report["0"]["recall"])
+         mlflow.log_metric("f1-score_0", class_report["0"]["f1-score"])
+
+         mlflow.log_metric("precision_1", class_report["1"]["precision"])
+         mlflow.log_metric("recall_1", class_report["1"]["recall"])
+         mlflow.log_metric("f1-score_1", class_report["1"]["f1-score"])
+
+         # ✅ Log classification report as an artifact
+         mlflow.log_artifact(report_path)
+
+         # ✅ Log model in MLflow
          signature = infer_signature(X_train, best_model.predict(X_train))
-         mlflow.sklearn.log_model(best_model, "best_random_forest_model", input_example=X_train.iloc[:1].to_dict(orient="list"), signature=signature)
+         mlflow.sklearn.log_model(best_model, "best_random_forest_model", 
+                                  input_example=X_train.iloc[:1].to_dict(orient="list"), 
+                                  signature=signature)
     
-    # ✅ Save the best model
+    # ✅ Save the best model locally
     os.makedirs("models", exist_ok=True)
     joblib.dump(best_model, MODEL_PATH)
     print(f"🚀 Best model saved to {MODEL_PATH}")
