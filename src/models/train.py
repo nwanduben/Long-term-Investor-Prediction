@@ -1,99 +1,78 @@
-import argparse
 import pandas as pd
 import mlflow
 import mlflow.sklearn
-from mlflow.models.signature import infer_signature
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score
 import joblib
-from src.data.preprocess import preprocess_data
-import os
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score, confusion_matrix
+from src.data.preprocess import preprocess_data  # Ensure preprocessing is correctly imported
 
-# ✅ Define the processed file path
-PROCESSED_DATA_PATH = "data/processed/bank_marketing_cleaned.csv"
+def train_multiple_models():
+    # ✅ Set MLflow Tracking URI (before logging runs)
+    mlflow.set_tracking_uri("http://127.0.0.1:5000")  # Ensure MLflow tracking server is running
+    mlflow.set_experiment("EliteBank_Model_Tracking")
 
-def train_models(max_iter, n_estimators, max_depth, dt_max_depth):
-    # ✅ Preprocess data before training
-    print("🔄 Running data preprocessing...")
-    preprocess_data()  # No arguments needed
+    # ✅ Load and preprocess data
+    df = pd.read_csv('data/raw/Elite_bank.csv')
+    df_processed = preprocess_data(df)
 
-    # ✅ Check if processed data exists
-    if not os.path.exists(PROCESSED_DATA_PATH):
-        raise FileNotFoundError(f"❌ Processed data not found at {PROCESSED_DATA_PATH}. Check preprocessing.")
+    X = df_processed.drop('deposit', axis=1)
+    y = df_processed['deposit']
 
-    # ✅ Load preprocessed dataset
-    print(f"📥 Loading preprocessed data from {PROCESSED_DATA_PATH}...")
-    df = pd.read_csv(PROCESSED_DATA_PATH)
+    # ✅ Split data into train & test sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 
-    # ✅ Define initial feature list (excluding categorical variables that are one-hot encoded)
-    features = ['age', 'balance', 'duration', 'campaign', 'pdays', 'previous', 
-                'default', 'housing', 'loan']  # Binary categorical variables
+    # ✅ Define models
+    models = {
+        "LogisticRegression": LogisticRegression(max_iter=2000),
+        "RandomForest": RandomForestClassifier(n_estimators=200, max_depth=10),
+        "GradientBoosting": GradientBoostingClassifier(n_estimators=150, learning_rate=0.05),
+    }
 
-    # ✅ Automatically add one-hot encoded categorical columns
-    for col in ['job', 'marital', 'education', 'contact', 'poutcome']:
-        one_hot_cols = [c for c in df.columns if col in c]  # Get all one-hot encoded columns
-        features.extend(one_hot_cols)  # ✅ Ensure all one-hot encoded columns are included
+    best_model = None
+    best_score = 0
+    best_model_name = None  # ✅ Track best model name
 
-    target = 'deposit'
-    X = df[features]
-    y = df[target]
+    for name, model in models.items():
+        with mlflow.start_run(run_name=name):  # ✅ No run_id, starts a new run
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            y_prob = model.predict_proba(X_test)[:, 1]
 
-    # ✅ Split data: 60% train, 20% validation, 20% test
-    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.25, random_state=42)
+            specificity = confusion_matrix(y_test, y_pred)[0, 0] / sum(confusion_matrix(y_test, y_pred)[0])
 
-    # ✅ Set up MLflow experiment
-    mlflow.set_experiment("Investor_Prediction_Experiment")
-    with mlflow.start_run():
-        # Log hyperparameters
-        mlflow.log_param("max_iter", max_iter)
-        mlflow.log_param("n_estimators", n_estimators)
-        mlflow.log_param("rf_max_depth", max_depth)
-        mlflow.log_param("dt_max_depth", dt_max_depth)
+            # ✅ Log model parameters & metrics to MLflow
+            mlflow.log_param("model_name", name)
+            mlflow.log_metric("accuracy", accuracy_score(y_test, y_pred))
+            mlflow.log_metric("precision", precision_score(y_test, y_pred))
+            mlflow.log_metric("recall", recall_score(y_test, y_pred))
+            mlflow.log_metric("roc_auc", roc_auc_score(y_test, y_prob))
+            mlflow.log_metric("specificity", specificity)
 
-        # Prepare input example for MLflow
-        input_example = X_train.iloc[:1].to_dict(orient="records")
-        
-        # 🔹 Logistic Regression
-        log_model = LogisticRegression(max_iter=max_iter)
-        log_model.fit(X_train, y_train)
-        log_val_acc = accuracy_score(y_val, log_model.predict(X_val))
-        mlflow.log_metric("logistic_regression_val_accuracy", log_val_acc)
-        mlflow.sklearn.log_model(log_model, "logistic_regression", input_example=input_example, signature=infer_signature(X_train, log_model.predict(X_train)))
+            # ✅ Save model to MLflow
+            mlflow.sklearn.log_model(model, "model")
 
-        # 🔹 Random Forest
-        rf_model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
-        rf_model.fit(X_train, y_train)
-        rf_val_acc = accuracy_score(y_val, rf_model.predict(X_val))
-        mlflow.log_metric("random_forest_val_accuracy", rf_val_acc)
-        mlflow.sklearn.log_model(rf_model, "random_forest", input_example=input_example, signature=infer_signature(X_train, rf_model.predict(X_train)))
+            # ✅ Track best model
+            if roc_auc_score(y_test, y_prob) > best_score:
+                best_score = roc_auc_score(y_test, y_prob)
+                best_model = model
+                best_model_name = name  # ✅ Save best model name
 
-        # 🔹 Decision Tree
-        dt_model = DecisionTreeClassifier(max_depth=dt_max_depth, random_state=42)
-        dt_model.fit(X_train, y_train)
-        dt_val_acc = accuracy_score(y_val, dt_model.predict(X_val))
-        mlflow.log_metric("decision_tree_val_accuracy", dt_val_acc)
-        mlflow.sklearn.log_model(dt_model, "decision_tree", input_example=input_example, signature=infer_signature(X_train, dt_model.predict(X_train)))
+    # ✅ Register the best model in MLflow
+    model_name = "EliteBank_Model_Tracking"
 
-        # ✅ Print accuracy scores
-        print(f"📊 Logistic Regression Validation Accuracy: {log_val_acc:.4f}")
-        print(f"🌲 Random Forest Validation Accuracy: {rf_val_acc:.4f}")
-        print(f"🧩 Decision Tree Validation Accuracy: {dt_val_acc:.4f}")
+    if best_model:
+        with mlflow.start_run():  # ✅ Starts a new run (no old run_id)
+            mlflow.sklearn.log_model(best_model, model_name, registered_model_name=model_name)
+        print(f"✅ Model Registered in MLflow: {model_name}")
 
-        # ✅ Save models locally
-        joblib.dump(log_model, "models/logistic_regression.pkl")
-        joblib.dump(rf_model, "models/random_forest.pkl")
-        joblib.dump(dt_model, "models/decision_tree.pkl")
+        # ✅ Save best model locally for deployment
+        joblib.dump(best_model, "artifacts/best_model.pkl")
+
+        print(f"🏆 Best Model: {best_model_name} - ROC-AUC: {best_score:.4f}")
+    else:
+        print("⚠️ No model was selected as the best.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train models for Investor Prediction")
-    parser.add_argument("--max_iter", type=int, default=1000, help="Max iterations for Logistic Regression")
-    parser.add_argument("--n_estimators", type=int, default=100, help="Number of trees in Random Forest")
-    parser.add_argument("--max_depth", type=int, default=10, help="Max depth for Random Forest trees")
-    parser.add_argument("--dt_max_depth", type=int, default=5, help="Max depth for Decision Tree")
-    args = parser.parse_args()
-    
-    train_models(args.max_iter, args.n_estimators, args.max_depth, args.dt_max_depth)
+    train_multiple_models()

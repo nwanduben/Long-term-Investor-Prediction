@@ -1,47 +1,49 @@
-import pandas as pd
-from sklearn.preprocessing import StandardScaler
 import os
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+import joblib
 
-# ✅ Define file paths
-RAW_DATA_PATH = "data/raw/bank_marketing_data.csv"
-PROCESSED_DATA_PATH = "data/processed/bank_marketing_cleaned.csv"
+def preprocess_data(df, save_path='data/processed/processed_data.csv'):
+    # Ensure necessary directories exist
+    os.makedirs('data/processed', exist_ok=True)
+    os.makedirs('artifacts', exist_ok=True)
 
-def preprocess_data():
-    """Loads raw data, preprocesses it, and saves the cleaned version."""
-    if not os.path.exists(RAW_DATA_PATH):
-        raise FileNotFoundError(f"❌ Error: {RAW_DATA_PATH} not found!")
+    label_encoders = {}
+    df_processed = df.copy()
 
-    print(f"📥 Loading raw data from: {RAW_DATA_PATH}...")
-    df = pd.read_csv(RAW_DATA_PATH)
+    # Encode target variable
+    df_processed['deposit'] = df_processed['deposit'].map({'yes': 1, 'no': 0})
 
-    # ✅ Drop 'log_balance' column if present
-    df = df.drop(columns=['log_balance'], errors='ignore')
+    # Encode categorical variables
+    categorical_cols = df_processed.select_dtypes(include='object').columns
+    for col in categorical_cols:
+        le = LabelEncoder()
+        df_processed[col] = le.fit_transform(df_processed[col])
+        label_encoders[col] = le
 
-    # ✅ Handle missing values
-    df.fillna(df.mode().iloc[0], inplace=True)
+    # ✅ Cap `duration` at 300 seconds to limit its influence
+    df_processed["duration"] = df_processed["duration"].clip(upper=300)
 
-    # ✅ Convert binary categorical columns to 1s and 0s
-    binary_columns = ['default', 'housing', 'loan', 'deposit']
-    df[binary_columns] = df[binary_columns].apply(lambda x: x.map({'yes': 1, 'no': 0}))
+    # ✅ Apply log transformation to `pdays` to reduce skewness
+    df_processed["pdays"] = df_processed["pdays"].apply(lambda x: np.log1p(x) if x > 0 else 0)
 
-    # ✅ Convert 'month' to numerical values
-    month_mapping = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6, 
-                     'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12}
-    df['month'] = df['month'].map(month_mapping)
-
-    # ✅ One-hot encode categorical variables (Include `contact`, `poutcome`)
-    df = pd.get_dummies(df, columns=['job', 'marital', 'education', 'contact', 'poutcome'], drop_first=True)
-
-    # ✅ Normalize numerical columns
-    numeric_cols = ['age', 'balance', 'duration', 'campaign', 'pdays', 'previous', 'day']
+    # ✅ Scale numerical variables to normalize feature influence
     scaler = StandardScaler()
-    df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    num_cols = ["balance", "duration", "campaign", "pdays", "previous"]
+    df_processed[num_cols] = scaler.fit_transform(df_processed[num_cols])
 
-    # ✅ Save processed data
-    os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True)
-    df.to_csv(PROCESSED_DATA_PATH, index=False)
-    
-    print(f"✅ Preprocessing complete. Data saved to {PROCESSED_DATA_PATH}")
+    # ✅ Save encoders and scaler for later use in inference
+    joblib.dump(label_encoders, 'artifacts/label_encoders.pkl')
+    joblib.dump(scaler, 'artifacts/scaler.pkl')
 
+    # ✅ Save processed CSV
+    df_processed.to_csv(save_path, index=False)
+
+    return df_processed
+
+# Optional standalone runner
 if __name__ == "__main__":
-    preprocess_data()
+    df = pd.read_csv("data/raw/Elite_bank.csv")
+    preprocess_data(df)
+    print("✅ Preprocessing complete.")
